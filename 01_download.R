@@ -17,16 +17,67 @@
 #
 # LIBRARIES -------------------------------------------------------------------
 #
+library(geojson)
+library(geojsonsf)
 library(rgee)
 library(sf)
 library(geobr)
+library(dplyr)
+library(purrr)
 #
 # OPTIONS ---------------------------------------------------------------------
 #
-gee_email = "hugo.seixas@alumni.usp.br"
+gee_email <- "hugo.seixas@alumni.usp.br"
 #
 # START GEE API ---------------------------------------------------------------
 
 ## Initialize GEE ----
 ee_Initialize(email = gee_email, drive = TRUE)
 
+# LOAD DATA -------------------------------------------------------------------
+
+## Load Mata Atlântica polygon ----
+biome <-
+  read_biomes() %>%
+  filter(name_biome == "Mata Atlântica")
+
+# Upload to GEE
+biome <- sf_as_ee(biome)
+
+## Load secondary forest age data ----
+sec_forest <- 
+  ee$Image("users/celsohlsj/public/secondary_forest_age_collection41_v2")$
+  selfMask()
+
+## Load primary forests ----
+
+# Load Mapbiomas
+mapbiomas <-
+  ee$Image(
+    paste0(
+      "projects/mapbiomas-workspace/public/",
+      "collection5/mapbiomas_collection50_integration_v1"
+    )
+  )
+
+# Get bands from mapbiomas
+bands <- mapbiomas$bandNames()$getInfo()
+
+# Extract primary forests
+prim_forest <-
+  ee$ImageCollection$fromImages(
+    map(bands, function(band_name) {
+      values <- c(3, -1) # The "-1" avoids an error with ee.List())
+      return(
+        mapbiomas$
+          select(band_name)$
+          remap(
+            from = values,
+            to = rep(1, length(values)),
+            defaultValue = 0
+          )
+      )
+    })
+  )$
+  reduce(ee$Reducer$allNonZero())$
+  selfMask()
