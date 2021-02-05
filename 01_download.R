@@ -46,8 +46,7 @@ biome <- sf_as_ee(biome)
 
 ## Load secondary forest age data ----
 sec_forest <- 
-  ee$Image("users/celsohlsj/public/secondary_forest_age_collection41_v2")$
-  selfMask()
+  ee$Image("users/celsohlsj/public/secondary_forest_age_collection41_v2")
 
 ## Load primary forests ----
 
@@ -56,15 +55,18 @@ mapbiomas <-
   ee$Image(
     paste0(
       "projects/mapbiomas-workspace/public/",
-      "collection5/mapbiomas_collection50_integration_v1"
+      "collection4_1/mapbiomas_collection41_integration_v1"
     )
   )
 
 # Get bands from mapbiomas
 bands <- mapbiomas$bandNames()$getInfo()
 
-# Extract primary forests
-prim_forest <-
+# CREATE MASK -----------------------------------------------------------------
+
+## Create primary forests mask ----
+# Only pixels which contains only forest in the time series
+prim_forest_mask <-
   ee$ImageCollection$fromImages(
     map(bands, function(band_name) {
       values <- c(3, -1) # The "-1" avoids an error with ee.List())
@@ -79,5 +81,36 @@ prim_forest <-
       )
     })
   )$
-  reduce(ee$Reducer$allNonZero())$
-  selfMask()
+  reduce(ee$Reducer$allNonZero())
+
+# Expand primary forest mask
+expanded_mask <- prim_forest_mask$focal_max(radius = 10)
+
+## Create secondary forest mask ----
+# Pixels that presented secondary forest at any year
+sec_forest_mask <-
+  ee$ImageCollection$fromImages(
+    map(
+      sec_forest$bandNames()$getInfo(), 
+      function(band_name) {
+        return(
+          sec_forest$
+            select(band_name)$
+            remap(
+              from = list(0),
+              to = list(0),
+              defaultValue = 1
+            )
+        )
+      }
+    )
+  )$
+  reduce(ee$Reducer$anyNonZero())
+
+## Create buffer between masks ----
+sec_forest_mask <- 
+  sec_forest_mask$updateMask(
+    prim_forest_mask$focal_max(radius = 10)$
+      subtract(prim_forest_mask)$
+      eq(0)
+  )
