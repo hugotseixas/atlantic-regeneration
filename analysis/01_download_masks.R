@@ -29,7 +29,7 @@ library(purrr)
 #
 # OPTIONS ---------------------------------------------------------------------
 #
-source("config.R")
+source("config/config.R")
 gee_email <- "hugo.seixas@alumni.usp.br"
 sf::sf_use_s2(FALSE)
 #
